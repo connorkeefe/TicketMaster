@@ -32,12 +32,11 @@ https://developer.ticketmaster.com/products-and-docs/apis/discovery-api/v2/
 ** Important to note: ticketmaster only allows 5000 daily calls on the discovery API daily so this script is designed to make around 4000 calls per day
 
 #### AWS RDS DB Setup
-** Feel free to reconfigure the code to write to a local db file, 
-should be simple change to init() in ```db/db_api.py```
 
 1. Create an RDS db on AWS, choose from free tier -> Engine: PostgreSQL, Size: db.t4g.micro
-2. Create a password for this db, remember this
-3. Set the Password and Endpoint (in Connectivity & Security tab) of the db as environment variables: 
+3. May need to modify the RDS security group to make sure your IP can access the database
+4. Create a password for this db, remember this
+5. Set the Password and Endpoint (in Connectivity & Security tab) of the db as environment variables: 
 
 ```export DB_HOST="your-endpoint-here"```
 ```export DB_PWD="your-password-here"```
