@@ -19,7 +19,7 @@ Navigate to the project folder:
 
 Python 3.11.11
 
-```pip install requirements.txt```
+```pip install -r requirements.txt```
 
 #### TicketMaster API Key
 1. Go to the discovery API page:
