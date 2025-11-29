@@ -1,0 +1,7 @@
+psycopg2-binary==2.9.10
+pandas==2.2.3
+numpy~=2.2.1
+matplotlib~=3.10.7
+tqdm~=4.67.1
+boto3~=1.41.5
+botocore~=1.41.5
