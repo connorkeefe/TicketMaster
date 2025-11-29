@@ -1,30 +1,32 @@
 import requests
 import uuid
 from datetime import datetime, timedelta
+from run_flags import TEST as TEST_FLAG
 import os, sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from logger import logger
 
+
 API_KEY = os.getenv("TM_API_KEY")
 # Test Toggle to limit the return of API call
-TEST_FLAG = False
 
-DAY_RANGE = 180
-PAGE_SIZE = 1 if TEST_FLAG else 200
+DAY_RANGE = 90
+PAGE_SIZE = 1 if TEST_FLAG else 150
 MAX_PAGE = 1 if TEST_FLAG else 5 #Limited by 1000 (200 * 5)
 
 
-def list_events(c_code):
+def list_events(c_code, segments):
     # Define the endpoint and parameters
     dates = create_date_ranges(DAY_RANGE)
     event_list = []
-    for (start, end) in dates:
-        elist, pages = api_event_list(c_code, start, end, 0)
-        event_list.extend(elist)
-        pages = min(pages, MAX_PAGE)
-        for i in range(1, pages):
-            elist, _ = api_event_list(c_code, start, end, i)
+    for segment in segments:
+        for (start, end) in dates:
+            elist, pages = api_event_list(c_code, start, end, 0, segment)
             event_list.extend(elist)
+            pages = min(pages, MAX_PAGE)
+            for i in range(1, pages):
+                elist, _ = api_event_list(c_code, start, end, i, segment)
+                event_list.extend(elist)
         
     logger.info(f"{len(set(event_list))} unique event ids generated")
 
@@ -32,7 +34,17 @@ def list_events(c_code):
 
 def api_event_list(c_code, start, end, page, segment = None):
     url = "https://app.ticketmaster.com/discovery/v2/events.json"
-    if segment:
+    if segment == "Music":
+        params = {
+        "apikey": API_KEY,
+        "countryCode": c_code,
+        "startDateTime": start,
+        "endDateTime": end,
+        "size": 1 if TEST_FLAG else 75,
+        "page": page,
+        "segmentName": segment
+        }
+    elif segment:
         params = {
         "apikey": API_KEY,
         "countryCode": c_code,

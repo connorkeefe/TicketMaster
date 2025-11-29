@@ -1,24 +1,26 @@
-from DailyAPIget import lambda_function
-from DailyPriceScraper import selenium_runner
-from DailyDataPull import pull_training_data
+from DailyAPIget import get_events
 from Inventory_API import scrape_inventory
+from DailyMLRun import ml_daily_run
+from run_flags import RUN, ML_RUN
+from db.db_api import insert_and_backup
 from logger import logger
-import datetime
-
 
 if __name__ == "__main__":
-    current_day = datetime.datetime.now().day
-    # Check if the day is even or odd
-    if current_day % 2 == 0:
-        event = {'c_code': 'CA'}
-    else:
-        event = {'c_code': 'US'}
+    event = {'c_code': 'US'}
     logger.info(f"lambda payload: {event}")
     logger.info("Starting Ticketmaster API Call")
-    lambda_function.lambda_handler(event, None)
-    logger.info("Finished Ticketmaster API Call, Starting Selenium Price Scrape")
-    selenium_runner.run_selenium()
-    # scrape_inventory.run_inventory_api()
-    logger.info("Finished Selenium Price Scrape")
-    # logger.info("Running Train Pull")
-    # pull_training_data.pull_train_data()
+    get_events.fetch_and_save_events(event, None)
+    logger.info("Finished Ticketmaster API Call")
+    if RUN:
+        logger.info("Starting Inventory API Price Scrape")
+        scrape_inventory.run_inventory_api()
+        logger.info("Finished Inventory API Price Scrape")
+        if not ML_RUN:
+            insert_and_backup()
+    else:
+        logger.info("Finished db operation successfully")
+
+    if ML_RUN:
+        logger.info("Starting ML daily run")
+        ml_daily_run.ml_daily_run()
+        logger.info("Finished ML DailY RUN")

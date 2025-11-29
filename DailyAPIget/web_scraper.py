@@ -18,10 +18,10 @@ class DailyScraper:
             "Artist100": "https://www.billboard.com/charts/artist-100/"
         }
         self.output_files = {
-            "NFL": r"csvs\nfl_power_rankings.csv",
-            "NBA": r"csvs\nba_power_rankings.csv",
-            "NHL": r"csvs\nhl_power_rankings.csv",
-            "Artist100": r"csvs\artist_100_rankings.csv"
+            "NFL": r"csvs/nfl_power_rankings.csv",
+            "NBA": r"csvs/nba_power_rankings.csv",
+            "NHL": r"csvs/nhl_power_rankings.csv",
+            "Artist100": r"csvs/artist_100_rankings.csv"
         }
         # self.s3_client = boto3.client('s3')
         # self.bucket_name = 'ticket-generator-storage'
@@ -64,10 +64,11 @@ class DailyScraper:
         elif category == "Artist100":
             # Billboard structure
              # Modify based on actual HTML structure
-            table = soup.find('div', class_='chart-results-container u-padding-tb-3@tablet lrv-u-padding-tb-2 lrv-u-background-color-grey-lightest')
+            rows = soup.find_all('div', class_='o-chart-results-list-row-container')
             rank = 1
-            for row in table.find_all('h3'):
-                text = row.text.strip()
+            for row in rows:
+                name = row.find('h3')
+                text = name.text.strip()
                 if text != "Imlogger.info/Promotion Label:" and text != "Gains in Weekly Performance" and text != "Additional Awards":
                     data.append([text, rank])
                     rank += 1
