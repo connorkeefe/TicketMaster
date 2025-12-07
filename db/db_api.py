@@ -785,7 +785,7 @@ class DB_API:
         self.conn.commit()
         logger.info(f"Upserted {len(params)} new SectionMarketData rows, skipped {skipped} already in PriceRecords.")
 
-    def pull_ticket_features(self, feature_query, batch_size, offset):
+    def pull_ticket_features(self, feature_query, batch_size, offset) -> pandas.DataFrame:
         self.conn.create_function("to_sqlite_ts", 1, build_sqlite_timestamp)
         df = pd.read_sql_query(
             feature_query,

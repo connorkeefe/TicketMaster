@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import sqlite3
 
+
 def migrate_add_timestampnorm():
     db = DB_API_ML()
     conn = db.conn
@@ -294,7 +295,7 @@ def fill_ticketdaily_labels(db):
     logger.info(f"Return fields updated, total_changes={conn.total_changes:,}")
 
     conn.commit()
-    db.close()
+    # db.close()
     logger.info("Label filling complete.")
 
 

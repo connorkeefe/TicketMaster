@@ -24,49 +24,53 @@ import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from urllib.parse import unquote_plus
 
+from AWS_ML_Worker.constants import TRAIN_BUFFER_SECONDS
+from predict_job.predict_worker import run_predict_pipeline
+from moto import mock_aws
+from tests.mock_helpers import load_local_folder_into_mock_s3, save_mock_s3_to_local, build_mock_messages
+from train_job.tft_training import build_tft_train_parquet_for_date, maybe_run_tft_training_from_metadata
+from train_job.train_helpers import clear_tmp
+from logger import logger
+import io
+import pandas as pd
+
 
 # ---------------------------------------------------------------------------
 # Configuration helpers
 # ---------------------------------------------------------------------------
 
-def get_env(name: str, default=None, required: bool = False):
-    value = os.getenv(name, default)
-    if required and value is None:
-        raise RuntimeError(f"Missing required environment variable: {name}")
-    return value
+from constants import LOCAL_TEST_MODE, TRAIN_QUEUE_URL, PREDICT_QUEUE_URL, ASG_NAME, SNS_TOPIC_ARN, MAX_MESSAGES_PER_POLL, IDLE_TIMEOUT_SECONDS, VISIBILITY_TIMEOUT_SECONDS, TRAIN_BUFFER_SECONDS
 
-
-PREDICT_QUEUE_URL = get_env("PREDICT_QUEUE_URL", required=True)
-TRAIN_QUEUE_URL = get_env("TRAIN_QUEUE_URL", required=True)
-SNS_TOPIC_ARN = get_env("SNS_TOPIC_ARN", default=None)
-ASG_NAME = get_env("ASG_NAME", required=True)
-
-IDLE_TIMEOUT_SECONDS = int(get_env("IDLE_TIMEOUT_SECONDS", "50"))          # 15 min
-VISIBILITY_TIMEOUT_SECONDS = int(get_env("VISIBILITY_TIMEOUT_SECONDS", "3600"))
-MAX_MESSAGES_PER_POLL = 1    # keep it simple for now
+# Used to decide when to kick off training
+TRAIN_DATA_UPDATED = False
 
 
 # ---------------------------------------------------------------------------
 # AWS clients
 # ---------------------------------------------------------------------------
 
+s3 = None
+session = None
+mock = None
+
+if LOCAL_TEST_MODE:
+    mock = mock_aws()
+    mock.start()
+
+# create a session in both modes
 session = boto3.Session()
-sqs = session.client("sqs")
-sns = session.client("sns")
-autoscaling = session.client("autoscaling")
-s3 = session.client("s3")   # you may or may not use it directly here
 
+# shared s3 client
+s3 = session.client("s3")
 
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
+# only real AWS clients when not local
+sqs = session.client("sqs") if not LOCAL_TEST_MODE else None
+sns = session.client("sns") if not LOCAL_TEST_MODE else None
+autoscaling = session.client("autoscaling") if not LOCAL_TEST_MODE else None
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
-)
-logger = logging.getLogger("ticketml.worker")
-
+# in LOCAL_TEST_MODE, create the bucket and load local files using this SAME s3 client
+if LOCAL_TEST_MODE:
+    load_local_folder_into_mock_s3(s3)
 
 # ---------------------------------------------------------------------------
 # S3 event parsing utilities
@@ -98,9 +102,9 @@ def classify_label_type(s3_key: str) -> str | None:
     Decide which label type a key corresponds to based on its prefix.
     You can adjust this to your exact S3 layout.
     """
-    if s3_key.startswith("labels/return_7day/") or s3_key.startswith("labels/return_7d/"):
+    if s3_key.startswith("labels/return_7d/"):
         return "return_7d"
-    if s3_key.startswith("labels/return_14day/") or s3_key.startswith("labels/return_14d/"):
+    if s3_key.startswith("labels/return_14d/"):
         return "return_14d"
     if s3_key.startswith("labels/section_return_7d/"):
         return "section_return_7d"
@@ -111,7 +115,7 @@ def classify_label_type(s3_key: str) -> str | None:
 # Pipeline hooks (YOU implement these functions in your own modules)
 # ---------------------------------------------------------------------------
 
-def process_predict_job(bucket: str, key: str) -> None:
+def process_predict_job(bucket: str, key: str) -> bool:
     """
     Here you call your prediction pipeline.
 
@@ -124,15 +128,19 @@ def process_predict_job(bucket: str, key: str) -> None:
     - Optionally write predictions back to your SQLite / Postgres DB
     """
     logger.info("Processing PREDICT job for s3://%s/%s", bucket, key)
-
-    # TODO: replace with real implementation
+    continue_flag = run_predict_pipeline(
+        bucket=bucket,
+        key=key,
+        s3_client=s3,
+    )
     # from pipeline.predict_worker import run_predict_pipeline
     # run_predict_pipeline(bucket, key, s3_client=s3)
     time.sleep(2)  # placeholder so you can see something in logs
     logger.info("Predict job completed for s3://%s/%s", bucket, key)
+    return continue_flag
 
 
-def process_train_job(bucket: str, key: str) -> None:
+def process_train_job(bucket: str, key: str) -> bool:
     """
     Here you call your training pipeline.
 
@@ -144,16 +152,22 @@ def process_train_job(bucket: str, key: str) -> None:
         - If enough new rows, retrain TFT / LGBM model
         - Save new model + metadata + train/test snapshots
     """
+    successful_train = False
     label_type = classify_label_type(key)
     logger.info(
         "Processing TRAIN job for s3://%s/%s (label_type=%s)", bucket, key, label_type
     )
+    if label_type == "section_return_7d":
+        out_key = build_tft_train_parquet_for_date(bucket, key, s3)
+        logger.info(f"Processed label instance for tft and saved train subset to: {out_key}")
+        successful_train = True
 
     # TODO: replace with real implementation
     # from pipeline.train_worker import run_train_pipeline
     # run_train_pipeline(bucket, key, label_type, s3_client=s3)
     time.sleep(2)
     logger.info("Train job completed for s3://%s/%s", bucket, key)
+    return successful_train
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +175,7 @@ def process_train_job(bucket: str, key: str) -> None:
 # ---------------------------------------------------------------------------
 
 def send_notification(subject: str, message: str) -> None:
-    if not SNS_TOPIC_ARN:
+    if LOCAL_TEST_MODE or not SNS_TOPIC_ARN:
         logger.info("SNS_TOPIC_ARN not set; skipping notification: %s", subject)
         return
 
@@ -212,9 +226,9 @@ def handle_message(queue_name: str, msg: dict) -> bool:
     try:
         for bucket, key in iter_s3_records(body):
             if queue_name == "predict":
-                process_predict_job(bucket, key)
+                success = process_predict_job(bucket, key)
             elif queue_name == "train":
-                process_train_job(bucket, key)
+                success = process_train_job(bucket, key)
             else:
                 logger.error("Unknown queue_name=%s", queue_name)
                 success = False
@@ -226,7 +240,7 @@ def handle_message(queue_name: str, msg: dict) -> bool:
         )
         success = False
 
-    if success:
+    if success and not LOCAL_TEST_MODE:
         try:
             sqs.delete_message(
                 QueueUrl=PREDICT_QUEUE_URL if queue_name == "predict" else TRAIN_QUEUE_URL,
@@ -240,6 +254,19 @@ def handle_message(queue_name: str, msg: dict) -> bool:
     return success
 
 
+
+def get_messages(queue_name: str) -> list[dict]:
+    """
+    In AWS mode: poll SQS.
+    In LOCAL_TEST_MODE: synthesize messages from S3.
+    """
+    if LOCAL_TEST_MODE:
+        return build_mock_messages(queue_name, s3)
+
+    queue_url = PREDICT_QUEUE_URL if queue_name == "predict" else TRAIN_QUEUE_URL
+    return poll_queue(queue_url)
+
+
 # ---------------------------------------------------------------------------
 # ASG scale-down logic
 # ---------------------------------------------------------------------------
@@ -249,6 +276,9 @@ def scale_down_asg():
     Set the ASG desired capacity to 0 so this instance gets terminated.
     """
     logger.info("Idle timeout reached. Scaling ASG %s down to 0.", ASG_NAME)
+    if LOCAL_TEST_MODE:
+        logger.info("LOCAL_TEST_MODE is True; not scaling down any ASG.")
+        return
     try:
         autoscaling.update_auto_scaling_group(
             AutoScalingGroupName=ASG_NAME,
@@ -267,7 +297,29 @@ def scale_down_asg():
 # ---------------------------------------------------------------------------
 
 def main():
+
     logger.info("TicketML worker starting up.")
+    logger.info("LOCAL_TEST_MODE: %s", LOCAL_TEST_MODE)
+    if LOCAL_TEST_MODE:
+        logger.info("Running in LOCAL_TEST_MODE. Using mock S3 objects instead of real SQS.")
+
+        # 1) Process mock predict messages
+        predict_messages = get_messages("predict")
+        for msg in predict_messages:
+            handle_message("predict", msg)
+
+        # 2) Process mock train messages
+        train_messages = get_messages("train")
+        for msg in train_messages:
+            handle_message("train", msg)
+
+        maybe_run_tft_training_from_metadata(s3)
+        save_mock_s3_to_local(s3)
+        logger.info("LOCAL_TEST_MODE run complete. Exiting worker.")
+        return
+
+    # --- Normal AWS mode below ---
+
     logger.info("Predict queue: %s", PREDICT_QUEUE_URL)
     logger.info("Train queue:   %s", TRAIN_QUEUE_URL)
     logger.info("ASG name:      %s", ASG_NAME)
@@ -279,14 +331,14 @@ def main():
         did_work = False
 
         # 1) Poll predict queue first (so new raw data gets predictions quickly)
-        predict_messages = poll_queue(PREDICT_QUEUE_URL)
+        predict_messages = get_messages(PREDICT_QUEUE_URL)
         if predict_messages:
             did_work = True
             for msg in predict_messages:
                 handle_message("predict", msg)
 
         # 2) Then poll train queue
-        train_messages = poll_queue(TRAIN_QUEUE_URL)
+        train_messages = get_messages(TRAIN_QUEUE_URL)
         if train_messages:
             did_work = True
             for msg in train_messages:
@@ -298,6 +350,9 @@ def main():
 
         # No work this cycle
         idle_for = time.time() - last_work_time
+        if idle_for >= TRAIN_BUFFER_SECONDS:
+            maybe_run_tft_training_from_metadata(s3)
+
         if idle_for >= IDLE_TIMEOUT_SECONDS:
             logger.info("No messages for %.1f seconds. Exiting worker.", idle_for)
             scale_down_asg()

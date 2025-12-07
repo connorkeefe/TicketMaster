@@ -3,6 +3,7 @@ from Inventory_API import scrape_inventory
 from DailyMLRun import ml_daily_run
 from run_flags import RUN, ML_RUN
 from db.db_api import insert_and_backup
+import time
 from logger import logger
 
 if __name__ == "__main__":
@@ -10,6 +11,8 @@ if __name__ == "__main__":
     logger.info(f"lambda payload: {event}")
     logger.info("Starting Ticketmaster API Call")
     get_events.fetch_and_save_events(event, None)
+    # logger.info("Sleeping for 1 hour and a bit")
+    # time.sleep(4600)
     logger.info("Finished Ticketmaster API Call")
     if RUN:
         logger.info("Starting Inventory API Price Scrape")

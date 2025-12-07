@@ -13,6 +13,9 @@ from AWS_ML_Worker.train_job.train_helpers import write_metadata_keys, clear_tmp
 from moto import mock_aws
 from tests.mock_helpers import load_local_folder_into_mock_s3, save_mock_s3_to_local
 
+# 🔹 NEW: import predict pipeline + RAW prefix
+from predict_job.predict_worker import run_predict_pipeline, RAW_DAILY_PREFIX
+
 s3 = None
 session = None
 mock = None
@@ -73,6 +76,39 @@ def list_label_keys(s3, bucket: str, prefix: str) -> list[str]:
     return keys
 
 
+# 🔹 NEW: list_raw_keys helper to drive predict pipeline from raw_daily
+def list_raw_keys(s3, bucket: str, prefix: str) -> list[str]:
+    """
+    List all raw_daily parquet files under the given prefix.
+    Typically these will look like:
+      raw_daily/date=YYYY-MM-DD/raw_ticket_features.parquet
+    """
+    keys: list[str] = []
+    continuation_token = None
+
+    while True:
+        params = {"Bucket": bucket, "Prefix": prefix}
+        if continuation_token:
+            params["ContinuationToken"] = continuation_token
+
+        resp = s3.list_objects_v2(**params)
+        contents = resp.get("Contents", []) or []
+
+        for obj in contents:
+            key = obj["Key"]
+            if key.endswith(".parquet"):
+                keys.append(key)
+
+        if resp.get("IsTruncated"):
+            continuation_token = resp.get("NextContinuationToken")
+        else:
+            break
+
+    keys = sorted(keys)
+    logger.info("Found %d raw_daily parquet(s) under %s", len(keys), prefix)
+    return keys
+
+
 def main():
     logger.info("==== Offline full TFT training starting (label-driven) ====")
 
@@ -81,12 +117,34 @@ def main():
     # write_metadata_keys(s3, BUCKET_NAME, TFT_NEW_DATA_META_KEY, [])
     # write_metadata_keys(s3, BUCKET_NAME, TFT_TRAIN_DATA_META_KEY, [])
 
+    # 🔹 0) First, run predict pipeline on all raw_daily files
+    #     so that feature_dfs / feature_store partitions are created.
+    raw_keys = list_raw_keys(s3, BUCKET_NAME, RAW_DAILY_PREFIX)
+
+    if not raw_keys:
+        logger.warning(
+            "No raw_daily parquet files found under s3://%s/%s; skipping predict pipeline.",
+            BUCKET_NAME,
+            RAW_DAILY_PREFIX,
+        )
+    else:
+        logger.info("Running predict pipeline for %d raw_daily file(s)...", len(raw_keys))
+        for raw_key in raw_keys:
+            try:
+                run_predict_pipeline(bucket=BUCKET_NAME, key=raw_key, s3_client=s3)
+            except Exception as e:
+                logger.exception(
+                    "Predict pipeline failed for raw key %s: %s",
+                    raw_key,
+                    e,
+                )
+
     # 1) Discover all label files
     label_keys = list_label_keys(s3, BUCKET_NAME, LABEL_PREFIX)
 
     if not label_keys:
         logger.warning(
-            "No label parquet files found under s3://%s/%s; nothing to do.",
+            "No label parquet files found under s3://%s/%s; nothing to do for TFT training.",
             BUCKET_NAME,
             LABEL_PREFIX,
         )
