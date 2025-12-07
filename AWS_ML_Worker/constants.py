@@ -14,10 +14,10 @@ MOCK_PREDICT_PREFIX = get_env("MOCK_PREDICT_PREFIX", "raw_daily/")
 MOCK_TRAIN_PREFIX = get_env("MOCK_TRAIN_PREFIX", "labels/")
 
 
-PREDICT_QUEUE_URL = get_env("PREDICT_QUEUE_URL", required=not LOCAL_TEST_MODE)
-TRAIN_QUEUE_URL   = get_env("TRAIN_QUEUE_URL", required=not LOCAL_TEST_MODE)
-SNS_TOPIC_ARN     = get_env("SNS_TOPIC_ARN", default=None)
-ASG_NAME          = get_env("ASG_NAME", required=not LOCAL_TEST_MODE)
+PREDICT_QUEUE_URL = get_env("PREDICT_QUEUE_URL", required=False, default=None)
+TRAIN_QUEUE_URL   = get_env("TRAIN_QUEUE_URL", required=False, default=None)
+SNS_TOPIC_ARN     = get_env("SNS_TOPIC_ARN", required=False, default=None)
+ASG_NAME          = get_env("ASG_NAME", required=False, default=None)
 
 IDLE_TIMEOUT_SECONDS      = int(get_env("IDLE_TIMEOUT_SECONDS", "50"))
 TRAIN_BUFFER_SECONDS      = int(get_env("IDLE_TIMEOUT_SECONDS", "30"))
