@@ -401,7 +401,8 @@ def train_tft(
 
     trainer = Trainer(
         max_epochs=MAX_EPOCHS,
-        accelerator="auto",
+        accelerator="gpu",  # or "auto" once cuda is available
+        devices=1,
         callbacks=[early_stop_callback, lr_logger, checkpoint_callback],
         gradient_clip_val=0.1,
     )
