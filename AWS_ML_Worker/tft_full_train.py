@@ -123,62 +123,62 @@ def main():
 
     # 🔹 0) First, run predict pipeline on all raw_daily files
     #     so that feature_dfs / feature_store partitions are created.
-    raw_keys = list_raw_keys(s3, BUCKET_NAME, RAW_DAILY_PREFIX)
-
-    if not raw_keys:
-        logger.warning(
-            "No raw_daily parquet files found under s3://%s/%s; skipping predict pipeline.",
-            BUCKET_NAME,
-            RAW_DAILY_PREFIX,
-        )
-    else:
-        logger.info("Running predict pipeline for %d raw_daily file(s)...", len(raw_keys))
-        for raw_key in raw_keys:
-            try:
-                run_predict_pipeline(bucket=BUCKET_NAME, key=raw_key, s3_client=s3)
-            except Exception as e:
-                logger.exception(
-                    "Predict pipeline failed for raw key %s: %s",
-                    raw_key,
-                    e,
-                )
-
-    # 1) Discover all label files
-    label_keys = list_label_keys(s3, BUCKET_NAME, LABEL_PREFIX)
-
-    if not label_keys:
-        logger.warning(
-            "No label parquet files found under s3://%s/%s; nothing to do for TFT training.",
-            BUCKET_NAME,
-            LABEL_PREFIX,
-        )
-        return
-
-    # 2) For each label file, build per-date TFT train parquet
-    for label_key in label_keys:
-        try:
-            train_key = build_tft_train_parquet_for_date(
-                bucket=BUCKET_NAME,
-                label_key=label_key,
-                s3=s3,
-            )
-            if train_key is None:
-                logger.info(
-                    "No non-NaN labels in %s – skipped building TFT train parquet.",
-                    label_key,
-                )
-            else:
-                logger.info(
-                    "Built TFT train parquet %s from labels %s",
-                    train_key,
-                    label_key,
-                )
-        except Exception as e:
-            logger.exception(
-                "Failed to build TFT train parquet for labels %s: %s",
-                label_key,
-                e,
-            )
+    # raw_keys = list_raw_keys(s3, BUCKET_NAME, RAW_DAILY_PREFIX)
+    #
+    # if not raw_keys:
+    #     logger.warning(
+    #         "No raw_daily parquet files found under s3://%s/%s; skipping predict pipeline.",
+    #         BUCKET_NAME,
+    #         RAW_DAILY_PREFIX,
+    #     )
+    # else:
+    #     logger.info("Running predict pipeline for %d raw_daily file(s)...", len(raw_keys))
+    #     for raw_key in raw_keys:
+    #         try:
+    #             run_predict_pipeline(bucket=BUCKET_NAME, key=raw_key, s3_client=s3)
+    #         except Exception as e:
+    #             logger.exception(
+    #                 "Predict pipeline failed for raw key %s: %s",
+    #                 raw_key,
+    #                 e,
+    #             )
+    #
+    # # 1) Discover all label files
+    # label_keys = list_label_keys(s3, BUCKET_NAME, LABEL_PREFIX)
+    #
+    # if not label_keys:
+    #     logger.warning(
+    #         "No label parquet files found under s3://%s/%s; nothing to do for TFT training.",
+    #         BUCKET_NAME,
+    #         LABEL_PREFIX,
+    #     )
+    #     return
+    #
+    # # 2) For each label file, build per-date TFT train parquet
+    # for label_key in label_keys:
+    #     try:
+    #         train_key = build_tft_train_parquet_for_date(
+    #             bucket=BUCKET_NAME,
+    #             label_key=label_key,
+    #             s3=s3,
+    #         )
+    #         if train_key is None:
+    #             logger.info(
+    #                 "No non-NaN labels in %s – skipped building TFT train parquet.",
+    #                 label_key,
+    #             )
+    #         else:
+    #             logger.info(
+    #                 "Built TFT train parquet %s from labels %s",
+    #                 train_key,
+    #                 label_key,
+    #             )
+    #     except Exception as e:
+    #         logger.exception(
+    #             "Failed to build TFT train parquet for labels %s: %s",
+    #             label_key,
+    #             e,
+    #         )
 
     # 3) Run TFT training over all train_data + new_data
     try:
@@ -200,7 +200,7 @@ def main():
         # optionally clear /tmp here if you want
         # clear_tmp()
 
-    save_mock_s3_to_local(s3)
+    # save_mock_s3_to_local(s3)
 
     logger.info("==== Offline full TFT training finished ====")
 
