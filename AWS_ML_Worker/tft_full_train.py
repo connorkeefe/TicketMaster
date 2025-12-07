@@ -25,7 +25,11 @@ if LOCAL_TEST_MODE:
     mock.start()
 
 # create a session in both modes
-session = boto3.Session()
+session = boto3.Session(
+    region_name=os.environ.get("AWS_REGION")
+    or os.environ.get("AWS_DEFAULT_REGION")
+    or "us-east-1"
+)
 
 # shared s3 client
 s3 = session.client("s3")
