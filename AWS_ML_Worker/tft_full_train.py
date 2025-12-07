@@ -31,9 +31,9 @@ session = boto3.Session()
 s3 = session.client("s3")
 
 # only real AWS clients when not local
-sqs = session.client("sqs") if not LOCAL_TEST_MODE else None
-sns = session.client("sns") if not LOCAL_TEST_MODE else None
-autoscaling = session.client("autoscaling") if not LOCAL_TEST_MODE else None
+# sqs = session.client("sqs") if not LOCAL_TEST_MODE else None
+# sns = session.client("sns") if not LOCAL_TEST_MODE else None
+# autoscaling = session.client("autoscaling") if not LOCAL_TEST_MODE else None
 
 # in LOCAL_TEST_MODE, create the bucket and load local files using this SAME s3 client
 if LOCAL_TEST_MODE:
