@@ -1,8 +1,7 @@
 import os
 from typing import Tuple
-
+import json
 import pandas as pd
-import torch
 from pytorch_forecasting import TimeSeriesDataSet, TemporalFusionTransformer
 from pytorch_forecasting.metrics import QuantileLoss
 from lightning.pytorch import Trainer, seed_everything         # <-- changed
@@ -40,7 +39,7 @@ MIN_ENCODER_LENGTH = 3      # 1-step lookback window
 MAX_PREDICTION_LENGTH = 1   # still one target per day (single-step)
 
 # Training / hardware tuning for g4dn.xlarge
-BATCH_SIZE = 256            # you can bump to 512 if GPU memory allows
+BATCH_SIZE = 300            # you can bump to 512 if GPU memory allows
 MAX_EPOCHS = 30             # or whatever you want for “real” training
 
 
@@ -369,11 +368,11 @@ def train_tft(
     # IMPORTANT: construct TFT via from_dataset so it is a proper LightningModule
     tft = TemporalFusionTransformer.from_dataset(
         training,
-        learning_rate=1e-3,
-        hidden_size=32,
+        learning_rate=3e-4,
+        hidden_size=48,
         attention_head_size=2,
         dropout=0.1,
-        hidden_continuous_size=16,
+        hidden_continuous_size=24,
         loss=QuantileLoss(),
         optimizer="adam",
         log_interval=50,
@@ -382,8 +381,8 @@ def train_tft(
 
     early_stop_callback = EarlyStopping(
         monitor="val_loss",
-        min_delta=1e-4,
-        patience=5,
+        min_delta=5e-5,
+        patience=10,
         verbose=True,
         mode="min",
     )
