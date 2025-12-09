@@ -11,8 +11,8 @@ if __name__ == "__main__":
     logger.info(f"lambda payload: {event}")
     logger.info("Starting Ticketmaster API Call")
     get_events.fetch_and_save_events(event, None)
-    # logger.info("Sleeping for 1 hour and a bit")
-    # time.sleep(4600)
+    # logger.info("Sleeping for 10 min")
+    # time.sleep(600)
     logger.info("Finished Ticketmaster API Call")
     if RUN:
         logger.info("Starting Inventory API Price Scrape")

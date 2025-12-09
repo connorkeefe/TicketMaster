@@ -241,7 +241,6 @@ def build_tft_datasets(
         "section_7day_median_price_delta",
         "section_3days_sold",
         "section_3days_new",
-        TARGET_COL
     ]
 
     for col in df.columns:
@@ -270,8 +269,6 @@ def build_tft_datasets(
 
 
     # Add target to unknown reals (pytorch_forecasting best practice)
-    if TARGET_COL not in time_varying_unknown_reals:
-        time_varying_unknown_reals.append(TARGET_COL)
 
     for col in static_categorical:
         if col in df.columns:
